@@ -118,17 +118,17 @@ class GenerativeTransformer(nn.Module):
         self.lm_head = nn.Linear(n_embed, vocab_size, bias=False)
         self.transformer.wte.weight = self.lm_head.weight
 
-        self.apply(self._init_weights)
+        def init_weights(module):
+            if isinstance(module, nn.Linear):
+                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+                if module.bias is not None:
+                    torch.nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Embedding):
+                torch.nn.init.normal_(module.weight, mean=0.0, std=0.02) 
+
+
+        self.apply(init_weights)
     
-
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-
 
     def forward(self, x_idx):
         device = x_idx.device
@@ -188,6 +188,7 @@ class GenerativeTransformer(nn.Module):
             x_idx = torch.cat((x_idx, idx_next), dim=1)
 
         return x_idx    
+    
     
 
 def GPT(model_type, override_args=None):
