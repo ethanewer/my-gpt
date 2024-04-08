@@ -132,12 +132,12 @@ class GenerativeTransformer(nn.Module):
 
     def forward(self, x_idx):
         device = x_idx.device
-        _, T = x_idx.size()
+        _, T = x_idx.shape
 
         assert T <= self.block_size, \
             f"cannot forward sequence of length {T}, block size is only {self.block_size}"
         
-        pos = torch.arange(0, T, dtype=torch.long, device=device)
+        pos = torch.arange(0, T, dtype=torch.int64, device=device)
 
         tok_emb = self.transformer.wte(x_idx) # shape (B, T, C)
         pos_emb = self.transformer.wpe(pos) # shape (T, C)
@@ -150,22 +150,6 @@ class GenerativeTransformer(nn.Module):
         x = self.transformer.ln_f(x)
         x = self.lm_head(x)
         return x
-
-
-    def configure_optimizers(self, lr, betas, weight_decay):
-        params = [p for p in self.parameters() if p.requires_grad]
-        # any parameters that is 2D will be weight decayed, otherwise no
-        # weight tensors in matmuls and embeddings have weight decay
-        # biases and layernorms don"t have weight decay
-        decay_params = [p for p in params if p.dim() >= 2]
-        nodecay_params = [p for p in params if p.dim() < 2]
-        optim_groups = [
-            {"params": decay_params, "weight_decay": weight_decay},
-            {"params": nodecay_params, "weight_decay": 0.0},
-        ]
-
-        optimizer = optim.AdamW(optim_groups, lr=lr, betas=betas)
-        return optimizer
     
 
     @torch.no_grad()

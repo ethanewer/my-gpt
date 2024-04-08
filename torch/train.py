@@ -9,7 +9,7 @@ OUT_DIR = "out"
 EVAL_INTERVAL = 1000
 LOG_INTERVAL = 10
 
-DATA_DIR = "data"
+DATA_DIR = "../data"
 
 BATCH_SIZE = 4
 BLOCK_SIZE = 1024
@@ -29,7 +29,7 @@ def get_batch(split):
         data = np.memmap(os.path.join(DATA_DIR, "val.bin"), dtype=np.uint16, mode="r")
 
     def make_block(i):
-        return torch.from_numpy((data[i:i + BLOCK_SIZE]).astype(np.int64))
+        return torch.from_numpy(data[i:i + BLOCK_SIZE].astype(np.int64))
     
 
     idxs = torch.randint(len(data) - BLOCK_SIZE, (BATCH_SIZE,))
@@ -122,8 +122,6 @@ def eval_and_save_checkpoint(iter_num):
 
 iter_num = 1
 best_val_loss = 1e9
-
-x, y = get_batch("train")
 t0 = time.time()
 
 while True:
@@ -131,11 +129,11 @@ while True:
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
     
+    x, y = get_batch("train")
+
     logits = model(x)
     loss = F.cross_entropy(logits.view(-1, logits.shape[-1]), y.view(-1))
     
-    x, y = get_batch("train")
-
     loss.backward()
     optimizer.step()
     optimizer.zero_grad(set_to_none=True)
