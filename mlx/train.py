@@ -21,7 +21,6 @@ LR_DECAY_ITERS = 600000
 MIN_LR = 6e-5
 
 
-
 def get_batch(split):
     if split == "train":
         data = np.memmap(os.path.join(DATA_DIR, "train.bin"), dtype=np.uint16, mode="r")
@@ -65,7 +64,6 @@ mx.eval(model.parameters())
 
 model.load_weights(f"{OUT_DIR}/model.npz")
 
-
 optimizer = optimizers.AdamW(lr, (0.9, 0.95), 1e-7, 0.1)
 
 state = [model.state, optimizer.state]
@@ -87,7 +85,7 @@ def eval_step(x, y):
     return loss_fn(model, x, y)
 
 
-def estimate_loss(n_iters=1):
+def estimate_loss(n_iters=50):
     out = {}
     for split in ["train", "val"]:
         losses = np.zeros(n_iters, dtype=np.float32)

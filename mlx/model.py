@@ -17,7 +17,7 @@ class LayerNorm(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, n_embed, n_head, block_size, dropout, bias=True):
+    def __init__(self, n_embed, n_head, dropout, bias=True):
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
@@ -40,9 +40,10 @@ class SelfAttention(nn.Module):
 
         q, k, v = mx.split(self.c_attn(x), 3, axis=2)
 
-        q = q.reshape((B, T, self.n_head, self.D)).transpose((0, 2, 1, 3)) # gives shape (B, N, T, D)
-        k = k.reshape((B, T, self.n_head, self.D)).transpose((0, 2, 1, 3)) # gives shape (B, N, T, D)
-        v = v.reshape((B, T, self.n_head, self.D)).transpose((0, 2, 1, 3)) # gives shape (B, N, T, D)
+        # reshape to (B, N, T, D)
+        q = q.reshape((B, T, self.n_head, self.D)).transpose((0, 2, 1, 3)) 
+        k = k.reshape((B, T, self.n_head, self.D)).transpose((0, 2, 1, 3))
+        v = v.reshape((B, T, self.n_head, self.D)).transpose((0, 2, 1, 3))
         
         y = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.attn_scale)
         y = y.transpose((0, 2, 1, 3)).reshape((B, T, self.n_embed)) # concat head outputs 
@@ -69,10 +70,10 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, n_embed, n_head, block_size, dropout, bias=True):
+    def __init__(self, n_embed, n_head, dropout, bias=True):
         super().__init__()
         self.ln_1 = LayerNorm(n_embed, bias=bias)
-        self.attn = SelfAttention(n_embed, n_head, block_size, dropout, bias)
+        self.attn = SelfAttention(n_embed, n_head, dropout, bias)
         self.ln_2 = LayerNorm(n_embed, bias=bias)
         self.mlp = MLP(n_embed, dropout, bias)
 
@@ -91,12 +92,10 @@ class GenerativeTransformer(nn.Module):
         super().__init__()
         self.block_size = block_size
 
-        args = (n_embed, n_head, block_size, dropout, bias)
-
         self.wte = nn.Embedding(vocab_size, n_embed)
         self.wpe = nn.Embedding(block_size, n_embed)
         self.drop = nn.Dropout(dropout)
-        self.h = [Block(*args) for _ in range(n_layer)]
+        self.h = [Block(n_embed, n_head, dropout, bias) for _ in range(n_layer)]
         self.ln_f = LayerNorm(n_embed, bias=bias)
 
         self.lm_head = nn.Linear(n_embed, vocab_size, bias=False)
