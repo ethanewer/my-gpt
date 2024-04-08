@@ -4,7 +4,6 @@ from torch import nn, optim
 import torch.nn.functional as F
 
 
-
 class LayerNorm(nn.Module):
     def __init__(self, normalized_shape, bias=True, eps=1e-5):
         super().__init__()
@@ -19,7 +18,7 @@ class LayerNorm(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, n_embed, n_head, blk_size, dropout, bias=True):
+    def __init__(self, n_embed, n_head, block_size, dropout, bias=True):
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
@@ -35,11 +34,8 @@ class SelfAttention(nn.Module):
 
         self.attn_scale = 1.0 / np.sqrt(self.D)
 
-        self.register_buffer(
-            "bias", 
-            torch.tril(torch.ones(blk_size, blk_size)).view(1, 1, blk_size, blk_size),
-        )
-
+        shape = (1, 1, block_size, block_size)
+        self.register_buffer("bias", torch.tril(torch.ones(shape[2:])).view(shape))
     
 
     def forward(self, x):
@@ -85,11 +81,12 @@ class MLP(nn.Module):
         return x
 
 
+
 class Block(nn.Module):
-    def __init__(self, n_embed, n_head, blk_size, dropout, bias=True):
+    def __init__(self, n_embed, n_head, block_size, dropout, bias=True):
         super().__init__()
         self.ln_1 = LayerNorm(n_embed, bias=bias)
-        self.attn = SelfAttention(n_embed, n_head, blk_size, dropout, bias)
+        self.attn = SelfAttention(n_embed, n_head, block_size, dropout, bias)
         self.ln_2 = LayerNorm(n_embed, bias=bias)
         self.mlp = MLP(n_embed, dropout, bias)
 
@@ -101,18 +98,18 @@ class Block(nn.Module):
 
 
 
-class GPT(nn.Module):
-    def __init__(self, n_embed, n_head, blk_size, 
+class GenerativeTransformer(nn.Module):
+    def __init__(self, n_embed, n_head, block_size, 
                  vocab_size, n_layer, dropout, bias=True):
         
         super().__init__()
-        self.blk_size = blk_size
+        self.block_size = block_size
 
-        args = (n_embed, n_head, blk_size, dropout, bias)
+        args = (n_embed, n_head, block_size, dropout, bias)
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(vocab_size, n_embed),
-            wpe = nn.Embedding(blk_size, n_embed),
+            wpe = nn.Embedding(block_size, n_embed),
             drop = nn.Dropout(dropout),
             h = nn.ModuleList([Block(*args) for _ in range(n_layer)]),
             ln_f = LayerNorm(n_embed, bias=bias),
@@ -137,8 +134,8 @@ class GPT(nn.Module):
         device = x_idx.device
         _, T = x_idx.size()
 
-        assert T <= self.blk_size, \
-            f"Cannot forward sequence of length {T}, block size is only {self.blk_size}"
+        assert T <= self.block_size, \
+            f"cannot forward sequence of length {T}, block size is only {self.block_size}"
         
         pos = torch.arange(0, T, dtype=torch.long, device=device)
 
@@ -178,10 +175,10 @@ class GPT(nn.Module):
         # the model each time. Most likely you"ll want to make sure to be in model.eval() 
         # mode of operation for this.
         for _ in range(max_new_tokens):
-            if x_idx.shape[1] <= self.blk_size:
+            if x_idx.shape[1] <= self.block_size:
                 x_idx_cropped = x_idx 
             else:
-                x_idx_cropped = x_idx[:, -self.blk_size:]
+                x_idx_cropped = x_idx[:, -self.block_size:]
 
             logits = self(x_idx_cropped)
             logits = logits[:, -1, :] / temperature
@@ -193,65 +190,64 @@ class GPT(nn.Module):
         return x_idx    
     
 
-    @classmethod
-    def from_pretrained(cls, model_type, override_args=None):
-        assert model_type in {"gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"}
-        override_args = override_args or {} # default to empty dict
-        # only dropout can be overridden see more notes below
-        assert all(k == "dropout" for k in override_args)
-        from transformers import GPT2LMHeadModel
-        print("loading weights from pretrained gpt: %s" % model_type)
+def GPT(model_type, override_args=None):
+    assert model_type in {"gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"}
+    override_args = override_args or {} # default to empty dict
+    # only dropout can be overridden see more notes below
+    assert all(k == "dropout" for k in override_args)
+    from transformers import GPT2LMHeadModel
+    print("loading weights from pretrained gpt: %s" % model_type)
 
-        # n_layer, n_head and n_embed are determined from model_type
-        config_args = {
-            "gpt2":         dict(n_layer=12, n_head=12, n_embed=768),  # 124M params
-            "gpt2-medium":  dict(n_layer=24, n_head=16, n_embed=1024), # 350M params
-            "gpt2-large":   dict(n_layer=36, n_head=20, n_embed=1280), # 774M params
-            "gpt2-xl":      dict(n_layer=48, n_head=25, n_embed=1600), # 1558M params
-        }[model_type]
-        
-        print("forcing vocab_size=50257, blk_size=1024, bias=True")
-        config_args["vocab_size"] = 50257 # always 50257 for GPT model checkpoints
-        config_args["blk_size"] = 1024 # always 1024 for GPT model checkpoints
-        config_args["bias"] = True # always True for GPT model checkpoints
-        
-        if "dropout" in override_args:
-            print(f"overriding dropout rate to {override_args["dropout"]}")
-            config_args["dropout"] = override_args["dropout"]
+    # n_layer, n_head and n_embed are determined from model_type
+    config_args = {
+        "gpt2":         dict(n_layer=12, n_head=12, n_embed=768),  # 124M params
+        "gpt2-medium":  dict(n_layer=24, n_head=16, n_embed=1024), # 350M params
+        "gpt2-large":   dict(n_layer=36, n_head=20, n_embed=1280), # 774M params
+        "gpt2-xl":      dict(n_layer=48, n_head=25, n_embed=1600), # 1558M params
+    }[model_type]
+    
+    print("forcing vocab_size=50257, block_size=1024, bias=True")
+    config_args["vocab_size"] = 50257 # always 50257 for GPT model checkpoints
+    config_args["block_size"] = 1024 # always 1024 for GPT model checkpoints
+    config_args["bias"] = True # always True for GPT model checkpoints
+    
+    if "dropout" in override_args:
+        print(f"overriding dropout rate to {override_args['dropout']}")
+        config_args["dropout"] = override_args["dropout"]
+    else:
+        config_args["dropout"] = 0.0
+
+    model = GenerativeTransformer(**config_args)
+    sd = model.state_dict()
+    sd_keys = sd.keys()
+    # discard this mask / buffer, not a param
+    sd_keys = [k for k in sd_keys if not k.endswith(".attn.bias")] 
+
+    # init a huggingface/transformers model
+    model_hf = GPT2LMHeadModel.from_pretrained(model_type)
+    sd_hf = model_hf.state_dict()
+
+    sd_keys_hf = sd_hf.keys()
+    sd_keys_hf = [k for k in sd_keys_hf if not k.endswith(".attn.masked_bias")]
+    sd_keys_hf = [k for k in sd_keys_hf if not k.endswith(".attn.bias")]
+    transposed = [
+        "attn.c_attn.weight", 
+        "attn.c_proj.weight", 
+        "mlp.c_fc.weight", 
+        "mlp.c_proj.weight",
+    ]
+
+    assert len(sd_keys_hf) == len(sd_keys), \
+        f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
+    
+    for k in sd_keys_hf:
+        if any(k.endswith(w) for w in transposed):
+            assert sd_hf[k].shape[::-1] == sd[k].shape
+            with torch.no_grad():
+                sd[k].copy_(sd_hf[k].T)
         else:
-            config_args["dropout"] = 0.0
+            assert sd_hf[k].shape == sd[k].shape
+            with torch.no_grad():
+                sd[k].copy_(sd_hf[k])
 
-        model = GPT(**config_args)
-        sd = model.state_dict()
-        sd_keys = sd.keys()
-        # discard this mask / buffer, not a param
-        sd_keys = [k for k in sd_keys if not k.endswith(".attn.bias")] 
-
-        # init a huggingface/transformers model
-        model_hf = GPT2LMHeadModel.from_pretrained(model_type)
-        sd_hf = model_hf.state_dict()
-
-        sd_keys_hf = sd_hf.keys()
-        sd_keys_hf = [k for k in sd_keys_hf if not k.endswith(".attn.masked_bias")]
-        sd_keys_hf = [k for k in sd_keys_hf if not k.endswith(".attn.bias")]
-        transposed = [
-            "attn.c_attn.weight", 
-            "attn.c_proj.weight", 
-            "mlp.c_fc.weight", 
-            "mlp.c_proj.weight",
-        ]
-
-        assert len(sd_keys_hf) == len(sd_keys), \
-            f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
-        
-        for k in sd_keys_hf:
-            if any(k.endswith(w) for w in transposed):
-                assert sd_hf[k].shape[::-1] == sd[k].shape
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k].T)
-            else:
-                assert sd_hf[k].shape == sd[k].shape
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k])
-
-        return model
+    return model
