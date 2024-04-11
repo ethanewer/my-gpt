@@ -18,7 +18,7 @@ BLOCK_SIZE = 1024
 DEVICE = "mps"
 DTYPE = torch.bfloat16
 
-lr = 1e-3
+START_LR = 1e-3
 WARMUP_ITERS = 2000
 LR_DECAY_ITERS = 600000
 MIN_LR = 1e-4
@@ -40,17 +40,17 @@ def get_batch(split: str) -> tuple[Tensor, Tensor]:
     return x, y
 
 
-def get_lr(iter_num):
-    if iter_num < WARMUP_ITERS: 
-        return lr * iter_num / WARMUP_ITERS 
+def get_lr(i: int) -> float:
+    if i < WARMUP_ITERS: 
+        return START_LR * i / WARMUP_ITERS 
     
-    if iter_num > LR_DECAY_ITERS:
+    if i > LR_DECAY_ITERS:
         return MIN_LR
     
-    decay_ratio = (iter_num - WARMUP_ITERS) / (LR_DECAY_ITERS - WARMUP_ITERS)
+    decay_ratio = (i - WARMUP_ITERS) / (LR_DECAY_ITERS - WARMUP_ITERS)
     assert 0 <= decay_ratio and decay_ratio <= 1
     coeff = 0.5 * (1.0 + np.cos(np.pi * decay_ratio))
-    return MIN_LR + coeff * (lr - MIN_LR)
+    return MIN_LR + coeff * (START_LR - MIN_LR)
 
 
 def configure_optimizer(
