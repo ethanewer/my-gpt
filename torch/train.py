@@ -24,7 +24,7 @@ LR_DECAY_ITERS = 600000
 MIN_LR = 1e-4
 
 
-def get_batch(split):
+def get_batch(split: str) -> tuple[Tensor, Tensor]:
     if split == "train":
         data = np.memmap(os.path.join(DATA_DIR, "train.bin"), dtype=np.uint16, mode="r")
     else:
@@ -53,13 +53,13 @@ def get_lr(iter_num):
     return MIN_LR + coeff * (lr - MIN_LR)
 
 
-def configure_optimizer(params, lr, betas, weight_decay):
-    params = [p for p in params if p.requires_grad]
-    # any parameters that is 2D will be weight decayed, otherwise no
-    # weight tensors in matmuls and embeddings have weight decay
-    # biases and layernorms don't have weight decay
-    decay_params = [p for p in params if p.dim() >= 2]
-    nodecay_params = [p for p in params if p.dim() < 2]
+def configure_optimizer(
+    params: Sequence[nn.Parameter], lr: float, 
+    betas: tuple[float, float], weight_decay: float,
+) -> optim.Adam:
+    grad_params = [p for p in params if p.requires_grad]
+    decay_params = [p for p in grad_params if p.dim() >= 2]
+    nodecay_params = [p for p in grad_params if p.dim() < 2]
     optim_groups = [
         {"params": decay_params, "weight_decay": weight_decay},
         {"params": nodecay_params, "weight_decay": 0.0},
@@ -91,7 +91,7 @@ optimizer = configure_optimizer(
 
 
 @torch.no_grad()
-def estimate_loss(n_iters=50):
+def evaluate_loss(n_iters=50) -> dict[str, float]:
     out = {}
     model.eval()
     for split in ["train", "val"]:
@@ -106,8 +106,8 @@ def estimate_loss(n_iters=50):
     return out
 
 
-def eval_and_save_checkpoint(iter_num):
-    losses = estimate_loss()
+def eval_and_save_checkpoint(iter_num: int) -> None:
+    losses = evaluate_loss()
     print(f"train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
     if losses["val"] < best_val_loss:
         best_val_loss = losses["val"]

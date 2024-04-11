@@ -1,24 +1,25 @@
+from typing import Sequence
 import numpy as np
 import torch
-from torch import nn
+from torch import nn, Tensor
 import torch.nn.functional as F
 
 
 class LayerNorm(nn.Module):
-    def __init__(self, normalized_shape, bias=True, eps=1e-5):
+    def __init__(self, normalized_shape: Sequence[int], bias=True, eps=1e-5) -> None:
         super().__init__()
         self.weight = nn.Parameter(torch.ones(normalized_shape))
         self.bias = nn.Parameter(torch.ones(normalized_shape)) if bias else None
         self.eps = eps
     
 
-    def forward(self, x): 
+    def forward(self, x: Tensor) -> Tensor: 
         return F.layer_norm(x, self.weight.shape, self.weight, self.bias, self.eps) 
     
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, n_embed, n_head, dropout, bias=True):
+    def __init__(self, n_embed: int, n_head: int, dropout: float, bias=True) -> None:
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
@@ -35,7 +36,7 @@ class SelfAttention(nn.Module):
         self.attn_scale = 1.0 / np.sqrt(self.D)
     
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         B, T, n_embed = x.shape
         assert n_embed == self.n_embed
 
@@ -54,14 +55,14 @@ class SelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, n_embed, dropout, bias=True):
+    def __init__(self, n_embed: int, dropout: float, bias=True):
         super().__init__()
         self.c_fc = nn.Linear(n_embed, 4 * n_embed, bias=bias)
         self.c_proj = nn.Linear(4 * n_embed, n_embed, bias=bias)
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x = F.gelu(self.c_fc(x))
         x = self.c_proj(x)
         x = self.dropout(x)
@@ -70,15 +71,15 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, n_embed, n_head, block_size, dropout, bias=True):
+    def __init__(self, n_embed: int, n_head: int, dropout: float, bias=True) -> None:
         super().__init__()
         self.ln_1 = LayerNorm(n_embed, bias=bias)
-        self.attn = SelfAttention(n_embed, n_head, block_size, dropout, bias)
+        self.attn = SelfAttention(n_embed, n_head, dropout, bias)
         self.ln_2 = LayerNorm(n_embed, bias=bias)
         self.mlp = MLP(n_embed, dropout, bias)
 
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
@@ -86,9 +87,10 @@ class Block(nn.Module):
 
 
 class GenerativeTransformer(nn.Module):
-    def __init__(self, n_embed, n_head, block_size, 
-                 vocab_size, n_layer, dropout, bias=True):
-        
+    def __init__(
+        self, n_embed: int, n_head: int, block_size: int, 
+        vocab_size: int, n_layer: int, dropout: float, bias=True,
+    ) -> None:
         super().__init__()
         self.block_size = block_size
 
@@ -117,7 +119,7 @@ class GenerativeTransformer(nn.Module):
         self.apply(init_weights)
     
 
-    def forward(self, x_idx):
+    def forward(self, x_idx: Tensor) -> Tensor:
         device = x_idx.device
         _, T = x_idx.shape
 
@@ -140,7 +142,7 @@ class GenerativeTransformer(nn.Module):
     
 
     @torch.no_grad()
-    def generate(self, x_idx, max_new_tokens, temperature=1.0):
+    def generate(self, x_idx: Tensor, max_new_tokens: int, temperature=1.0) -> Tensor:
         # Take a conditioning sequence of indices x_idx (int64 tensor of shape (B, T)) and 
         # complete the sequence max_new_tokens times, feeding the predictions back into 
         # the model each time. Most likely you"ll want to make sure to be in model.eval() 
@@ -162,7 +164,7 @@ class GenerativeTransformer(nn.Module):
     
     
 
-def GPT(model_type, override_args=None):
+def GPT(model_type: str, override_args=None) -> GenerativeTransformer:
     assert model_type in {"gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"}
     override_args = override_args or {} # default to empty dict
     # only dropout can be overridden see more notes below
