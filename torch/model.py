@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch import nn, optim
+from torch import nn
 import torch.nn.functional as F
 
 
@@ -18,7 +18,7 @@ class LayerNorm(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, n_embed, n_head, block_size, dropout, bias=True):
+    def __init__(self, n_embed, n_head, dropout, bias=True):
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
@@ -33,9 +33,6 @@ class SelfAttention(nn.Module):
         self.res_dropout = nn.Dropout(dropout)
 
         self.attn_scale = 1.0 / np.sqrt(self.D)
-
-        # shape = (1, 1, block_size, block_size)
-        # self.register_buffer("bias", torch.tril(torch.ones(shape[2:])).view(shape))
     
 
     def forward(self, x):
@@ -48,20 +45,8 @@ class SelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, self.D).transpose(1, 2) # gives shape (B, N, T, D)
         v = v.view(B, T, self.n_head, self.D).transpose(1, 2) # gives shape (B, N, T, D)
 
-        # (B, N, T, D) @ (B, N, D, T) = (B, N, T, T)
-        # a = self.attn_scale * q @ k.transpose(2, 3)
-        # a.masked_fill_(self.bias[:, :, :T, :T] == 0, -torch.inf)
-        # a = F.softmax(a, dim=3)
-        # a = self.attn_dropout(a)
-
-        # (B, N, T, T) @ (B, N, T, D) = (B, N, T, D)
-        # (T, T) @ (T, D) = (T, D) for each batch and head
-        # y = a @ v
-
         y = F.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout, is_causal=True)
-
         y = y.transpose(1, 2).contiguous().view(B, T, self.n_embed) # concat head outputs 
-
         y = self.c_proj(y)
         y = self.res_dropout(y)
         return y

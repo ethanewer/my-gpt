@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch import optim
 import torch.nn.functional as F
 import os
 import time
@@ -84,13 +85,13 @@ optimizer = configure_optimizer(
     weight_decay=0.1,
 )
 
-# checkpoint = torch.load('out/checkpoint.pt')
-# model.load_state_dict(checkpoint['model'])
-# optimizer.load_state_dict(checkpoint['optimizer'])
+# checkpoint = torch.load(f"{OUT_DIR}/checkpoint.pt")
+# model.load_state_dict(checkpoint["model"])
+# optimizer.load_state_dict(checkpoint["optimizer"])
 
 
 @torch.no_grad()
-def estimate_loss(n_iters=100):
+def estimate_loss(n_iters=50):
     out = {}
     model.eval()
     for split in ["train", "val"]:
@@ -117,12 +118,12 @@ def eval_and_save_checkpoint(iter_num):
                 "iter_num": iter_num,
                 "best_val_loss": best_val_loss,
             }
-            print(f"saving checkpoint to {OUT_DIR}")
             torch.save(checkpoint, os.path.join(OUT_DIR, "checkpoint.pt"))
+            print(f"saved checkpoint to {OUT_DIR}")
 
 
 iter_num = 1
-best_val_loss = 1e9
+best_val_loss = float("inf")
 t0 = time.time()
 
 while True:

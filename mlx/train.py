@@ -8,17 +8,17 @@ from model import *
 
 OUT_DIR = "out"
 EVAL_INTERVAL = 1000
-LOG_INTERVAL = 10
+LOG_INTERVAL = 1
 
 DATA_DIR = "../data"
 
-BATCH_SIZE = 4
+BATCH_SIZE = 3
 BLOCK_SIZE = 1024
 
-lr = 6e-4
+lr = 1e-3
 WARMUP_ITERS = 2000
 LR_DECAY_ITERS = 600000
-MIN_LR = 6e-5
+MIN_LR = 1e-4
 
 
 def get_batch(split):
@@ -60,13 +60,15 @@ model = GenerativeTransformer(
     bias=True,
 )
 
-mx.eval(model.parameters())
+# model.load_weights(f"{OUT_DIR}/model.npz")
 
-model.load_weights(f"{OUT_DIR}/model.npz")
+model.set_dtype(mx.bfloat16)
 
 optimizer = optimizers.AdamW(lr, (0.9, 0.95), 1e-7, 0.1)
 
 state = [model.state, optimizer.state]
+
+mx.eval(state)
 
 
 def loss_fn(model, x, y):
@@ -98,7 +100,7 @@ def estimate_loss(n_iters=50):
 
 
 iter_num = 1
-best_val_loss = float('inf')
+best_val_loss = float("inf")
 t0 = time.time()
 
 while True:
@@ -121,5 +123,6 @@ while True:
         if losses["val"] < best_val_loss:
             best_val_loss = losses["val"]
             model.save_weights(f"{OUT_DIR}/model.npz")        
+            print(f"saved checkpoint to {OUT_DIR}")
 
     iter_num += 1
