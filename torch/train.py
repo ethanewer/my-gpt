@@ -7,19 +7,20 @@ from model import *
 
 OUT_DIR = "out"
 EVAL_INTERVAL = 1000
-LOG_INTERVAL = 10
+LOG_INTERVAL = 1
 
 DATA_DIR = "../data"
 
-BATCH_SIZE = 4
+BATCH_SIZE = 3
 BLOCK_SIZE = 1024
 
 DEVICE = "mps"
+DTYPE = torch.bfloat16
 
-lr = 6e-4
+lr = 1e-3
 WARMUP_ITERS = 2000
 LR_DECAY_ITERS = 600000
-MIN_LR = 6e-5
+MIN_LR = 1e-4
 
 
 def get_batch(split):
@@ -74,7 +75,7 @@ model = GenerativeTransformer(
     n_layer=12, 
     dropout=0.0, 
     bias=True,
-).to(device=DEVICE)
+).to(device=DEVICE, dtype=DTYPE)
 
 optimizer = configure_optimizer(
     model.parameters(), 

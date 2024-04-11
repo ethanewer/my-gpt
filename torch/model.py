@@ -34,8 +34,8 @@ class SelfAttention(nn.Module):
 
         self.attn_scale = 1.0 / np.sqrt(self.D)
 
-        shape = (1, 1, block_size, block_size)
-        self.register_buffer("bias", torch.tril(torch.ones(shape[2:])).view(shape))
+        # shape = (1, 1, block_size, block_size)
+        # self.register_buffer("bias", torch.tril(torch.ones(shape[2:])).view(shape))
     
 
     def forward(self, x):
@@ -49,14 +49,16 @@ class SelfAttention(nn.Module):
         v = v.view(B, T, self.n_head, self.D).transpose(1, 2) # gives shape (B, N, T, D)
 
         # (B, N, T, D) @ (B, N, D, T) = (B, N, T, T)
-        a = self.attn_scale * q @ k.transpose(2, 3)
-        a.masked_fill_(self.bias[:, :, :T, :T] == 0, -torch.inf)
-        a = F.softmax(a, dim=3)
-        a = self.attn_dropout(a)
+        # a = self.attn_scale * q @ k.transpose(2, 3)
+        # a.masked_fill_(self.bias[:, :, :T, :T] == 0, -torch.inf)
+        # a = F.softmax(a, dim=3)
+        # a = self.attn_dropout(a)
 
         # (B, N, T, T) @ (B, N, T, D) = (B, N, T, D)
         # (T, T) @ (T, D) = (T, D) for each batch and head
-        y = a @ v
+        # y = a @ v
+
+        y = F.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout, is_causal=True)
 
         y = y.transpose(1, 2).contiguous().view(B, T, self.n_embed) # concat head outputs 
 
