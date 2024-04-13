@@ -17,7 +17,10 @@ class LayerNorm(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, n_embed, n_head, dropout, bias=True):
+    def __init__(
+        self, n_embed: int, n_head: int, 
+        mask: mx.array, dropout: float, bias=True
+    ) -> None:
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
@@ -28,10 +31,11 @@ class SelfAttention(nn.Module):
         self.c_proj = nn.Linear(n_embed, n_embed, bias=bias)
         self.dropout = nn.Dropout(dropout)
 
-        self.attn_scale = 1.0 / np.sqrt(self.D)
+        self.mask = mask
+        self.scale = 1.0 / np.sqrt(self.D)
     
 
-    def __call__(self, x):
+    def __call__(self, x: mx.array):
         B, T, n_embed = x.shape
         assert n_embed == self.n_embed
 
@@ -45,7 +49,12 @@ class SelfAttention(nn.Module):
         k = k.reshape((B, T, self.n_head, self.D)).transpose((0, 2, 1, 3))
         v = v.reshape((B, T, self.n_head, self.D)).transpose((0, 2, 1, 3))
         
-        y = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.attn_scale)
+        y = mx.fast.scaled_dot_product_attention(
+            q, k, v, 
+            mask=self.mask[:T, :T], 
+            scale=self.scale,
+        )
+        
         y = y.transpose((0, 2, 1, 3)).reshape((B, T, self.n_embed)) # concat head outputs 
         y = self.c_proj(y)
         y = self.dropout(y)
@@ -70,15 +79,18 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, n_embed, n_head, dropout, bias=True):
+    def __init__(
+        self, n_embed: int, n_head: int, 
+        mask: mx.array, dropout: float, bias=True,
+    ) -> None:
         super().__init__()
         self.ln_1 = LayerNorm(n_embed, bias=bias)
-        self.attn = SelfAttention(n_embed, n_head, dropout, bias)
+        self.attn = SelfAttention(n_embed, n_head, mask, dropout, bias)
         self.ln_2 = LayerNorm(n_embed, bias=bias)
         self.mlp = MLP(n_embed, dropout, bias)
 
 
-    def __call__(self, x):
+    def __call__(self, x: mx.array):
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
         return x
@@ -86,23 +98,38 @@ class Block(nn.Module):
 
 
 class GenerativeTransformer(nn.Module):
-    def __init__(self, n_embed, n_head, block_size, 
-                 vocab_size, n_layer, dropout, bias=True):
-        
+    def __init__(
+        self, n_embed: int, n_head: int, block_size: int, 
+        vocab_size: int, n_layer: int, dropout: float, bias=True,
+    ) -> None:
         super().__init__()
         self.block_size = block_size
-
         self.wte = nn.Embedding(vocab_size, n_embed)
         self.wpe = nn.Embedding(block_size, n_embed)
         self.drop = nn.Dropout(dropout)
-        self.h = [Block(n_embed, n_head, dropout, bias) for _ in range(n_layer)]
+
+        mask = np.zeros((block_size, block_size), dtype=np.float32)
+        mask[np.tril(np.ones((block_size, block_size))) == 0] = -np.inf
+        mask = mx.array(mask)
+        
+        self.h = [Block(n_embed, n_head, mask, dropout, bias) for _ in range(n_layer)]
         self.ln_f = LayerNorm(n_embed, bias=bias)
 
         self.lm_head = nn.Linear(n_embed, vocab_size, bias=False)
         self.wte.weight = self.lm_head.weight
+
+        def init_weights(_, m: nn.Module):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Embedding):
+                m.weight = nn.init.normal(0.0, 0.02)(m.weight)
+                if hasattr(m, "bias") and m.bias is not None:
+                    m.bias = mx.zeros_like(m.bias)
+        
+
+        self.apply_to_modules(init_weights)
+                
     
 
-    def __call__(self, x_idx):
+    def __call__(self, x_idx: mx.array):
         _, T = x_idx.shape
 
         assert T <= self.block_size, \
@@ -123,7 +150,7 @@ class GenerativeTransformer(nn.Module):
         return x
     
 
-    def generate(self, x_idx, max_new_tokens, temperature=1.0):
+    def generate(self, x_idx: mx.array, max_new_tokens: int, temperature=1.0):
         # Take a conditioning sequence of indices x_idx (int64 tensor of shape (B, T)) and 
         # complete the sequence max_new_tokens times, feeding the predictions back into 
         # the model each time. Most likely you"ll want to make sure to be in model.eval() 
@@ -136,9 +163,6 @@ class GenerativeTransformer(nn.Module):
 
             logits = self(x_idx_cropped)
             logits = logits[:, -1, :] / temperature
-
-            probs = nn.softmax(logits, axis=-1)
-            idx_next = mx.multinomial(probs, num_samples=1)
-            x_idx = mx.cat((x_idx, idx_next), axis=1)
-
-        return x_idx  
+            next_idx = mx.random.categorical(logits)[None]
+            x_idx = mx.concatenate((x_idx, next_idx), axis=1)
+        return x_idx   

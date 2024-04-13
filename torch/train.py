@@ -106,7 +106,7 @@ def evaluate_loss(n_iters=50) -> dict[str, float]:
     return out
 
 
-def eval_and_save_checkpoint(iter_num: int) -> None:
+def eval_and_save_checkpoint(iter_num: int, best_val_loss: float) -> None:
     losses = evaluate_loss()
     print(f"train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
     if losses["val"] < best_val_loss:
@@ -120,6 +120,7 @@ def eval_and_save_checkpoint(iter_num: int) -> None:
             }
             torch.save(checkpoint, os.path.join(OUT_DIR, "checkpoint.pt"))
             print(f"saved checkpoint to {OUT_DIR}")
+    return best_val_loss
 
 
 iter_num = 1
@@ -147,6 +148,6 @@ while True:
         print(f"iter {iter_num}: loss {loss.item():.4f}, time {dt:.2f}s")
 
     if iter_num % EVAL_INTERVAL == 0:
-        eval_and_save_checkpoint(iter_num)
+        best_val_loss = eval_and_save_checkpoint(iter_num, best_val_loss)
 
     iter_num += 1
