@@ -30,7 +30,6 @@ class SelfAttention(nn.Module):
         self.c_proj = nn.Linear(n_embed, n_embed, bias=bias)
 
         self.dropout = dropout
-        self.attn_dropout = nn.Dropout(dropout)
         self.res_dropout = nn.Dropout(dropout)
 
         self.attn_scale = 1.0 / np.sqrt(self.D)
@@ -94,7 +93,7 @@ class GenerativeTransformer(nn.Module):
         super().__init__()
         self.block_size = block_size
 
-        args = (n_embed, n_head, block_size, dropout, bias)
+        args = (n_embed, n_head, dropout, bias)
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(vocab_size, n_embed),

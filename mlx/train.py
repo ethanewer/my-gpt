@@ -115,11 +115,11 @@ while True:
         t1 = time.time()
         dt = t1 - t0
         t0 = t1
-        print(f"iter {iter_num}: loss {loss.item():.4f}, time {dt:.2f}s")
+        print(f"iter {iter_num}: loss {loss.item():.3f}, time {dt:.3f}s")
 
     if iter_num % EVAL_INTERVAL == 0:
         losses = estimate_loss()
-        print(f"train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        print(f"train loss {losses['train']:.3f}, val loss {losses['val']:.3f}")
         if losses["val"] < best_val_loss:
             best_val_loss = losses["val"]
             model.save_weights(f"{OUT_DIR}/model.npz")        
